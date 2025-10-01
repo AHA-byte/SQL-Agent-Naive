@@ -1,4 +1,4 @@
-# 📊 SQL Agent Testing with MySQL
+# SQL Agent Testing with MySQL
 
 This project is a **MySQL + Python environment** designed to test and
 experiment with SQL Agents, dummy data, and automated querying. It
@@ -6,12 +6,12 @@ provides a ready-to-use setup with MySQL, connection handling, ORM
 (SQLAlchemy), and integration with modern LLMs/AI models for natural
 language SQL experiments.
 
-> ⚡ Note: The **SQL seed data generation** has its own dedicated
+Note: The **SQL seed data generation** has its own dedicated
 > documentation (see `seed/README.md`).
 
 ------------------------------------------------------------------------
 
-## 🚀 Features
+## Features
 
 -   **MySQL Database** --- tested with MySQL 8.0.x\
 -   **SQLAlchemy ORM** --- for smooth query building and database
@@ -30,7 +30,7 @@ language SQL experiments.
 
 ------------------------------------------------------------------------
 
-## 📂 Project Structure
+## Project Structure
 
     .
     ├── seed/                 # Data seeding module (has its own README.md)
@@ -45,7 +45,7 @@ language SQL experiments.
 
 ------------------------------------------------------------------------
 
-## ⚙️ Requirements
+## Requirements
 
 Python **3.9+** is recommended.
 
@@ -54,23 +54,9 @@ Install dependencies:
 ``` bash
 pip install -r requirements.txt
 ```
-
-### ✅ Are `requirements.txt` entries sufficient?
-
-Yes, your `requirements.txt` includes everything needed for:\
-- **Database connectivity** (`mysql-connector-python`, `PyMySQL`,
-`SQLAlchemy`)\
-- **Dummy data** (`Faker`)\
-- **Environment variables** (`python-dotenv`)\
-- **Data handling & UI** (`pandas`, `streamlit`)\
-- **AI integrations** (`openai`, `google-generativeai`, `requests`)
-
-👉 You may want to **remove duplicates** (`mysql-connector-python`,
-`sqlalchemy` appear twice) to keep it clean.
-
 ------------------------------------------------------------------------
 
-## 🔑 Environment Variables
+## Environment Variables
 
 Create a `.env` file in the project root:
 
@@ -91,7 +77,7 @@ GOOGLE_API_KEY=your_google_api_key
 
 ------------------------------------------------------------------------
 
-## 🛠️ Usage
+## Usage
 
 ### 1. Start MySQL Server
 
@@ -128,7 +114,7 @@ streamlit run app/ui/main.py
 
 ------------------------------------------------------------------------
 
-## 📦 Tech Stack
+## Tech Stack
 
 -   **Database**: MySQL 8.0\
 -   **Backend**: Python 3.9+, SQLAlchemy ORM\
@@ -138,7 +124,7 @@ streamlit run app/ui/main.py
 
 ------------------------------------------------------------------------
 
-## 🤝 Contributing
+## Contributing
 
 1.  Fork the repo\
 2.  Create a feature branch (`git checkout -b feature-xyz`)\
@@ -148,7 +134,7 @@ streamlit run app/ui/main.py
 
 ------------------------------------------------------------------------
 
-## 🐞 Troubleshooting
+## Troubleshooting
 
 -   **Workbench says "no connection"** → Start MySQL service manually
     (`services.msc` → `MySQL80` → Start).\
@@ -159,6 +145,6 @@ streamlit run app/ui/main.py
 
 ------------------------------------------------------------------------
 
-## 📜 License
+## License
 
 MIT License -- feel free to use and modify.
