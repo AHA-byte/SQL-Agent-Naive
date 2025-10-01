@@ -1,0 +1,21 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+faker = "==25.9.1"
+python-dotenv = "==1.0.1"
+mysql-connector-python = "*"
+streamlit = "*"
+sqlalchemy = "*"
+pymysql = "*"
+pandas = "*"
+requests = "*"
+google-genai = "*"
+google-generativeai = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.13"

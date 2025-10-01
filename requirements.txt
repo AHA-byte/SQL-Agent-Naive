@@ -1,0 +1,12 @@
+mysql-connector-python==9.0.0
+SQLAlchemy==2.0.34
+Faker==25.9.1
+python-dotenv==1.0.1
+mysql-connector-python
+streamlit
+sqlalchemy 
+pymysql 
+pandas
+openai
+requests
+google-generativeai
