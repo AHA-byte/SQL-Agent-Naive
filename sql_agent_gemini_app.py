@@ -133,7 +133,7 @@ with tab1:
         # 3️⃣ Generate SQL Section
         st.subheader("3️⃣ Generated SQL Query")
         if st.button("Generate SQL Query"):
-            with st.spinner("🤖 Gemini is thinking..."):
+            with st.spinner("Gemini is thinking..."):
                 generated_sql = generate_sql(user_query, system_prompt)
                 st.session_state['generated_sql'] = generated_sql
 
