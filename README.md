@@ -144,7 +144,3 @@ streamlit run app/ui/main.py
     successfully.
 
 ------------------------------------------------------------------------
-
-## License
-
-MIT License -- feel free to use and modify.
