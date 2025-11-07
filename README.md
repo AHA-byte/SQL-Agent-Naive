@@ -144,3 +144,4 @@ streamlit run app/ui/main.py
     successfully.
 
 ------------------------------------------------------------------------
+## License
