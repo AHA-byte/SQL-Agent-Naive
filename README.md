@@ -63,7 +63,7 @@ Create a `.env` file in the project root:
 ``` ini
 # MySQL Database Config
 DB_HOST=localhost
-DB_PORT=3306
+DB_PORT=3306#default is 3360 for mysql
 DB_USER=root
 DB_PASSWORD=yourpassword
 DB_NAME=testdb
