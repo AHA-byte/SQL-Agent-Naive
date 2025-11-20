@@ -78,7 +78,7 @@ GOOGLE_API_KEY=your_google_api_key
 ------------------------------------------------------------------------
 
 ## Usage
-
+##
 ### 1. Start MySQL Server
 
 Make sure your MySQL service is running:
