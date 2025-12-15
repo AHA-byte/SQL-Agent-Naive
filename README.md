@@ -9,7 +9,7 @@ language SQL experiments.
 Note: The **SQL seed data generation** has its own dedicated
 > documentation (see `seed/README.md`).
 
-------------------------------------------------------------------------
+--------------------------------------------------------------------------
 
 ## Features
 
@@ -28,7 +28,7 @@ Note: The **SQL seed data generation** has its own dedicated
 -   **Data Handling** --- with `pandas` for easy manipulation and
     display
 
-------------------------------------------------------------------------
+--------------------------------------------------------------------------
 
 ## Project Structure
 
