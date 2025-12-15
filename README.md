@@ -43,7 +43,7 @@ Note: The **SQL seed data generation** has its own dedicated
     ├── .env.example          # Example env config
     └── README.md             # This file
 
-------------------------------------------------------------------------
+-----------------------------------------------------------------------
 
 ## Requirements
 
@@ -54,7 +54,7 @@ Install dependencies:
 ``` bash
 pip install -r requirements.txt
 ```
-------------------------------------------------------------------------
+-----------------------------------------------------------------------
 
 ## Environment Variables
 
