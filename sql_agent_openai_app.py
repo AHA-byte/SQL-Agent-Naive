@@ -17,22 +17,46 @@ if not OPENAI_API_KEY:
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Azure SQL Configuration
-AZURE_SQL_HOST = os.getenv("AZURE_SQL_HOST")
-AZURE_SQL_PORT = os.getenv("AZURE_SQL_PORT")
-AZURE_SQL_USER = os.getenv("AZURE_SQL_USER")
-AZURE_SQL_PASSWORD = quote_plus(os.getenv("AZURE_SQL_PASSWORD", ""))
-AZURE_SQL_DB = os.getenv("AZURE_SQL_DB")
+# Database configurations - Support multiple Azure SQL databases
+DATABASES = {
+    "IN4MO": {
+        "host": os.getenv("AZURE_SQL_HOST"),
+        "port": os.getenv("AZURE_SQL_PORT", "1433"),
+        "user": os.getenv("AZURE_SQL_USER"),
+        "password": quote_plus(os.getenv("AZURE_SQL_PASSWORD", "")),
+        "db": os.getenv("AZURE_SQL_DB"),
+    },
+    "PRIME": {
+        "host": os.getenv("AZURE_SQL_HOST_2"),
+        "port": os.getenv("AZURE_SQL_PORT", "1433"),
+        "user": os.getenv("AZURE_SQL_USER_2"),
+        "password": quote_plus(os.getenv("AZURE_SQL_PASSWORD_2", "")),
+        "db": os.getenv("AZURE_SQL_DB_2"),
+    },
+    "ENDATA": {
+        "host": os.getenv("AZURE_SQL_HOST_3"),
+        "port": os.getenv("AZURE_SQL_PORT", "1433"),
+        "user": os.getenv("AZURE_SQL_USER_3"),
+        "password": quote_plus(os.getenv("AZURE_SQL_PASSWORD_3", "")),
+        "db": os.getenv("AZURE_SQL_DB_3"),
+    }
+}
 
-# Database connection function
-def get_engine():
-    url = f"mssql+pyodbc://{AZURE_SQL_USER}:{AZURE_SQL_PASSWORD}@{AZURE_SQL_HOST}:1433/{AZURE_SQL_DB}?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
+# Filter out databases with missing credentials
+AVAILABLE_DATABASES = {k: v for k, v in DATABASES.items() if v["host"] and v["user"] and v["db"]}
+
+# Database connection function - supports selected database
+def get_engine(db_config=None):
+    if db_config is None:
+        db_config = list(AVAILABLE_DATABASES.values())[0]  # Use first available
+    
+    url = f"mssql+pyodbc://{db_config['user']}:{db_config['password']}@{db_config['host']}:1433/{db_config['db']}?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
     engine = create_engine(url)
     return engine
 
 # Fetch database schema
-def fetch_schema():
-    engine = get_engine()
+def fetch_schema(db_config=None):
+    engine = get_engine(db_config)
     with engine.connect() as conn:
         query = text("""
             SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES 
@@ -51,8 +75,8 @@ def fetch_schema():
         return schema_dict
 
 # Fetch data from a specific table
-def fetch_table_data(table_name, limit=20):
-    engine = get_engine()
+def fetch_table_data(table_name, limit=20, db_config=None):
+    engine = get_engine(db_config)
     try:
         with engine.connect() as conn:
             query = f"SELECT TOP {limit} * FROM [{table_name}];"
@@ -103,8 +127,8 @@ def generate_sql(user_query, system_prompt):
         return f"-- Error generating SQL: {e}"
 
 # Execute SQL query against the database
-def execute_query(sql):
-    engine = get_engine()
+def execute_query(sql, db_config=None):
+    engine = get_engine(db_config)
     try:
         with engine.connect() as conn:
             result = conn.execute(text(sql))
@@ -120,6 +144,11 @@ st.set_page_config(layout="wide")
 
 # Title of the app
 st.title("SQL Agent Streamlit App with OpenAI API")
+
+# Database selector at the top
+st.subheader("📊 Select Database")
+selected_db = st.selectbox("Choose a database:", list(AVAILABLE_DATABASES.keys()))
+current_db_config = AVAILABLE_DATABASES[selected_db]
 
 # Initialize session state variables
 if 'schema_text' not in st.session_state:
@@ -144,7 +173,7 @@ with tab1:
         st.subheader("2️⃣ System Prompt (Database Schema)")
         if st.button("Auto-populate schema"):
             with st.spinner("Fetching schema..."):
-                schema = fetch_schema()
+                schema = fetch_schema(current_db_config)
                 formatted_schema = "\n".join([f"{t}: {', '.join(cols)}" for t, cols in schema.items()])
                 st.session_state['schema_text'] = formatted_schema
 
@@ -168,7 +197,7 @@ with tab1:
                 st.warning("SQL query is empty.")
             else:
                 with st.spinner("Executing query..."):
-                    df = execute_query(sql_query)
+                    df = execute_query(sql_query, current_db_config)
                     st.session_state['last_result'] = df
 
     # Divider between UI sections
@@ -186,7 +215,7 @@ with tab2:
     st.subheader("Database Tables")
     
     # Fetch the table names from the schema
-    schema = fetch_schema()
+    schema = fetch_schema(current_db_config)
     table_names = list(schema.keys())
 
     # Dropdown to select table
@@ -195,11 +224,11 @@ with tab2:
     # Show top 20 rows of the selected table
     if table_name:
         st.subheader(f"Top 20 rows from {table_name}")
-        df_top = fetch_table_data(table_name, limit=20)
+        df_top = fetch_table_data(table_name, limit=20, db_config=current_db_config)
         st.dataframe(df_top)
 
         # Option to show all data
         if st.button("Show full table"):
             st.subheader(f"Full table: {table_name}")
-            df_full = fetch_table_data(table_name, limit=1000)  # Show full table (limit to 1000 rows for performance)
+            df_full = fetch_table_data(table_name, limit=1000, db_config=current_db_config)  # Show full table (limit to 1000 rows for performance)
             st.dataframe(df_full)
