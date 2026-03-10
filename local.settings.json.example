@@ -1,0 +1,22 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "OPENAI_API_KEY": "",
+    "OPENAI_MODEL": "gpt-4o-mini",
+    "AZURE_SQL_HOST": "",
+    "AZURE_SQL_PORT": "1433",
+    "AZURE_SQL_USER": "",
+    "AZURE_SQL_PASSWORD": "",
+    "AZURE_SQL_DB": "",
+    "AZURE_SQL_HOST_2": "",
+    "AZURE_SQL_USER_2": "",
+    "AZURE_SQL_PASSWORD_2": "",
+    "AZURE_SQL_DB_2": "",
+    "AZURE_SQL_HOST_3": "",
+    "AZURE_SQL_USER_3": "",
+    "AZURE_SQL_PASSWORD_3": "",
+    "AZURE_SQL_DB_3": ""
+  }
+}

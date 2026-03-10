@@ -1,147 +1,130 @@
-# SQL Agent Testing with MySQL
+# SQL Agent (Azure Function App + Streamlit Test Client)
 
-This project is a **MySQL + Python environment** designed to test and
-experiment with SQL Agents, dummy data, and automated querying. It
-provides a ready-to-use setup with MySQL, connection handling, ORM
-(SQLAlchemy), and integration with modern LLMs/AI models for natural
-language SQL experiments.
+This project is now structured for Azure deployment using a Python Azure Function App.
+Streamlit remains available as a local test client and calls the same HTTP endpoints that Azure hosts.
 
-Note: The **SQL seed data generation** has its own dedicated
-> documentation (see `seed/README.md`).
+## Architecture
 
---------------------------------------------------------------------------
+- **Azure Function App**: server-side API for schema fetch, SQL generation, and SQL execution
+- **Shared service layer** (`app/services.py`): DB + OpenAI logic used by Function endpoints
+- **Streamlit app** (`sql_agent_openai_app.py`): local-only client UI that calls Function API
 
-## Features
+## API Endpoints
 
--   **MySQL Database** --- tested with MySQL 8.0.x\
--   **SQLAlchemy ORM** --- for smooth query building and database
-    interaction\
--   **MySQL Connectors** --- supports both `mysql-connector-python` and
-    `PyMySQL`\
--   **Streamlit UI** --- optional interface to visualize data and
-    interact with SQL Agent\
--   **Faker Integration** --- (in seed module) for generating fake data\
--   **Environment Management** --- using `.env` for database credentials
-    and config\
--   **AI/LLM Support** --- experiment with `openai` and
-    `google-generativeai` for NL-to-SQL tasks\
--   **Data Handling** --- with `pandas` for easy manipulation and
-    display
+- `GET /api/health`
+- `GET /api/databases`
+- `POST /api/schema`
+- `POST /api/generate-sql`
+- `POST /api/execute`
+- `POST /api/table-preview`
 
---------------------------------------------------------------------------
+## Files Added for Azure Functions
 
-## Project Structure
+- `function_app.py` (Azure Functions v2 programming model entry point)
+- `host.json`
+- `.funcignore`
+- `local.settings.json.example`
+- `app/config.py`
+- `app/services.py`
 
-    .
-    ├── seed/                 # Data seeding module (has its own README.md)
-    ├── app/                  # Core Python app logic
-    │   ├── db/               # DB connection & ORM setup
-    │   ├── agent/            # SQL Agent / AI integrations
-    │   ├── ui/               # Streamlit UI components
-    │   └── utils/            # Helper functions
-    ├── requirements.txt      # Dependencies
-    ├── .env.example          # Example env config
-    └── README.md             # This file
+## Security and Runtime Defaults
 
------------------------------------------------------------------------
+- SQL execution is restricted to read-only queries (`SELECT`/`WITH`)
+- Dangerous SQL keywords are blocked (e.g. `DROP`, `ALTER`, `DELETE`)
+- Table preview limit is capped
+- SQL Server connection uses ODBC Driver 18 with encryption
 
-## Requirements
+## Local Development
 
-Python **3.9+** is recommended.
+### 1) Install dependencies
 
-Install dependencies:
-
-``` bash
+```bash
 pip install -r requirements.txt
 ```
------------------------------------------------------------------------
 
-## Environment Variables
+### 2) Configure environment
 
-Create a `.env` file in the project root:
+Create `.env` in project root:
 
-``` ini
-# MySQL Database Config
-DB_HOST=localhost
-DB_PORT=3306#default is 3360 for mysql
-DB_USER=root
-DB_PASSWORD=yourpassword
-DB_NAME=testdb
+```ini
+# Function + Streamlit
+FUNCTION_API_BASE_URL=http://localhost:7071/api
+FUNCTION_API_KEY=
 
-# OpenAI API
+# OpenAI
 OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-4o-mini
 
-# Google Generative AI API
-GOOGLE_API_KEY=your_google_api_key
+# Azure SQL (Database 1)
+AZURE_SQL_HOST=your-server.database.windows.net
+AZURE_SQL_PORT=1433
+AZURE_SQL_USER=your_user
+AZURE_SQL_PASSWORD=your_password
+AZURE_SQL_DB=your_database
+
+# Azure SQL (Database 2)
+AZURE_SQL_HOST_2=...
+AZURE_SQL_USER_2=...
+AZURE_SQL_PASSWORD_2=...
+AZURE_SQL_DB_2=...
+
+# Azure SQL (Database 3)
+AZURE_SQL_HOST_3=...
+AZURE_SQL_USER_3=...
+AZURE_SQL_PASSWORD_3=...
+AZURE_SQL_DB_3=...
 ```
 
-------------------------------------------------------------------------
+### 3) Start Function App locally
 
-## Usage
-##
-### 1. Start MySQL Server
+Install Azure Functions Core Tools, then run:
 
-Make sure your MySQL service is running:
-
-``` bash
-net start MySQL80   # Windows
-sudo service mysql start  # Linux/macOS
+```bash
+func start
 ```
 
-### 2. Run Database Migrations / ORM Setup
+### 4) Start Streamlit test client
 
-If you're using SQLAlchemy models, initialize the schema:
+In a second terminal:
 
-``` bash
-python -m app.db.init_db
+```bash
+streamlit run sql_agent_openai_app.py
 ```
 
-### 3. Seed Data (Optional)
+## Deploy to Azure Function App
 
-Check `seed/README.md` for fake data generation.
+### 1) Create Azure resources
 
-### 4. Start the Streamlit App
+- Resource group
+- Storage account
+- Function App (Python runtime)
 
-``` bash
-streamlit run app/ui/main.py
-```
+### 2) Set app settings in Azure Function App
 
-### 5. Interact with SQL Agent
+Set all required values from `.env` as Function App Application Settings:
 
--   Query data using SQLAlchemy or direct connectors.\
--   Test natural language → SQL with LLMs (via OpenAI/Google API).\
--   Visualize results in Streamlit.
+- `OPENAI_API_KEY`, `OPENAI_MODEL`
+- `AZURE_SQL_*` values for each database profile
 
-------------------------------------------------------------------------
+### 3) Deploy code
 
-## Tech Stack
+Use one of:
 
--   **Database**: MySQL 8.0\
--   **Backend**: Python 3.9+, SQLAlchemy ORM\
--   **Frontend/UI**: Streamlit\
--   **AI Models**: OpenAI, Google Generative AI\
--   **Utilities**: Pandas, Faker, Requests, Dotenv
+- VS Code Azure Functions extension deploy
+- Azure CLI zip deploy
+- CI/CD pipeline (GitHub Actions or Azure DevOps)
 
-------------------------------------------------------------------------
+### 4) (Recommended) Harden for production
 
-## Contributing
+- Move secrets to Azure Key Vault
+- Use Managed Identity where possible
+- Restrict networking for Azure SQL
+- Put APIM or auth in front of Function endpoints for Teams traffic
 
-1.  Fork the repo\
-2.  Create a feature branch (`git checkout -b feature-xyz`)\
-3.  Commit changes (`git commit -m "Added new feature"`)\
-4.  Push branch (`git push origin feature-xyz`)\
-5.  Open a Pull Request
+## Teams Integration (Next Step)
 
-------------------------------------------------------------------------
+Teams bot/service should call these Function endpoints rather than connecting directly to DB or OpenAI.
 
-## Troubleshooting
-
--   **Workbench says "no connection"** → Start MySQL service manually
-    (`services.msc` → `MySQL80` → Start).\
--   **Port already in use** → Check MySQL is not already running on port
-    `3306`.\
--   **Module not found** → Ensure `pip install -r requirements.txt` ran
-    successfully.
-
-------------------------------------------------------------------------
 ## License
+
+MIT
