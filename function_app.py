@@ -1,15 +1,19 @@
 import json
 import logging
+import traceback
 
 import azure.functions as func
 
 from app.config import get_available_databases
+from app.main import process_message_request
 from app.services import (
     ServiceError,
     dataframe_to_records,
     execute_query,
+    fetch_foreign_keys,
     fetch_schema,
     fetch_table_data,
+    format_fk_for_prompt,
     format_schema_for_prompt,
     generate_sql,
 )
@@ -30,6 +34,43 @@ def _parse_body(req: func.HttpRequest) -> dict:
         return req.get_json()
     except ValueError:
         return {}
+
+
+@app.route(route="messages", methods=["POST"])
+def messages(req: func.HttpRequest) -> func.HttpResponse:
+    body = _parse_body(req)
+    user_query = (body.get("message") or body.get("text") or body.get("query") or "").strip()
+
+    try:
+        result, _ = process_message_request(body)
+
+        payload = {
+            "query": user_query,
+            "sql": result.get("sql", ""),
+            "rows": result.get("rows", []),
+        }
+        if result.get("jobs") is not None:
+            payload["jobs"] = result.get("jobs")
+
+        if result.get("status") != "success":
+            payload["error"] = result.get("error", result.get("message", "Unknown error"))
+            return _json_response(payload, status=400)
+
+        return _json_response(payload, status=200)
+    except Exception as exc:
+        print("=== ERROR START ===")
+        print("ERROR:", exc)
+        traceback.print_exc()
+        print("=== ERROR END ===")
+        return _json_response(
+            {
+                "query": user_query,
+                "sql": "",
+                "rows": [],
+                "error": str(exc),
+            },
+            status=400,
+        )
 
 
 @app.route(route="health", methods=["GET"])
@@ -53,10 +94,13 @@ def schema(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         schema_dict = fetch_schema(database)
+        fk_list = fetch_foreign_keys(database)
         return _json_response(
             {
                 "schema": schema_dict,
                 "schema_text": format_schema_for_prompt(schema_dict),
+                "foreign_keys": fk_list,
+                "fk_text": format_fk_for_prompt(fk_list),
             }
         )
     except ServiceError as exc:
@@ -71,9 +115,10 @@ def generate_sql_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     body = _parse_body(req)
     user_query = body.get("user_query", "")
     schema_text = body.get("schema_text", "")
+    fk_text = body.get("fk_text", "")
 
     try:
-        sql = generate_sql(user_query, schema_text)
+        sql = generate_sql(user_query, schema_text, fk_text=fk_text)
         return _json_response({"sql": sql})
     except ServiceError as exc:
         return _json_response({"error": str(exc)}, status=400)

@@ -1,8 +1,8 @@
 azure-functions
+azure-identity
+azure-keyvault-secrets
 openai
 pandas
 pyodbc
 python-dotenv
-requests
 SQLAlchemy
-streamlit
