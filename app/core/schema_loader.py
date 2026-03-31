@@ -2,7 +2,7 @@ import re
 
 from sqlalchemy import text
 
-from app.config import DatabaseConfig, get_available_databases, get_default_database_name
+from app.config import DatabaseConfig, get_allowed_schemas, get_available_databases, get_default_database_name
 from app.core.errors import ServiceError
 from app.core.prompt_builder import format_fk_for_prompt, format_schema_for_prompt
 from app.core.db_executor import get_engine
@@ -22,23 +22,39 @@ def get_db_config_or_raise(database_name: str | None) -> tuple[str, DatabaseConf
 
     return chosen, dbs[chosen]
 
+
+def _table_key(schema: str, table: str) -> str:
+    return table if schema.lower() == "dbo" else f"{schema}.{table}"
+
+
+def _split_table_key(table_key: str) -> tuple[str, str]:
+    if "." in table_key:
+        schema, table = table_key.split(".", 1)
+        return schema, table
+    return "dbo", table_key
+
+
 def fetch_table_names(database_name: str) -> list[str]:
     _, config = get_db_config_or_raise(database_name)
     engine = get_engine(config)
+    allowed_schemas = sorted(get_allowed_schemas())
+    schema_csv = ", ".join(f"'{schema}'" for schema in allowed_schemas)
 
     table_query = text(
-        """
-        SELECT TABLE_NAME
+        f"""
+        SELECT TABLE_SCHEMA, TABLE_NAME
         FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA = 'dbo'
-        ORDER BY TABLE_NAME
+        WHERE TABLE_TYPE IN ('BASE TABLE', 'VIEW')
+          AND TABLE_SCHEMA IN ({schema_csv})
+        ORDER BY TABLE_SCHEMA, TABLE_NAME
         """
     )
 
     with engine.connect() as conn:
         rows = conn.execute(table_query).fetchall()
 
-    return [row[0] for row in rows]
+    names = [_table_key(str(row[0]), str(row[1])) for row in rows]
+    return sorted(dict.fromkeys(names))
 
 
 def fetch_schema(database_name: str, table_filter: list[str] | None = None) -> dict[str, list[str]]:
@@ -49,7 +65,7 @@ def fetch_schema(database_name: str, table_filter: list[str] | None = None) -> d
         """
         SELECT COLUMN_NAME
         FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_NAME = :table_name AND TABLE_SCHEMA = 'dbo'
+        WHERE TABLE_NAME = :table_name AND TABLE_SCHEMA = :table_schema
         ORDER BY ORDINAL_POSITION
         """
     )
@@ -57,18 +73,27 @@ def fetch_schema(database_name: str, table_filter: list[str] | None = None) -> d
     schema_dict: dict[str, list[str]] = {}
     selected_tables = table_filter or fetch_table_names(database_name)
     with engine.connect() as conn:
-        for table_name in selected_tables:
-            cols = conn.execute(col_query, {"table_name": table_name}).fetchall()
-            schema_dict[table_name] = [c[0] for c in cols]
+        for table_key in selected_tables:
+            table_schema, table_name = _split_table_key(table_key)
+            cols = conn.execute(
+                col_query,
+                {
+                    "table_name": table_name,
+                    "table_schema": table_schema,
+                },
+            ).fetchall()
+            schema_dict[table_key] = [c[0] for c in cols]
     return schema_dict
 
 
 def fetch_foreign_keys(database_name: str, table_filter: set[str] | None = None) -> list[dict]:
     _, config = get_db_config_or_raise(database_name)
     engine = get_engine(config)
+    allowed_schemas = sorted(get_allowed_schemas())
+    schema_csv = ", ".join(f"'{schema}'" for schema in allowed_schemas)
 
     fk_query = text(
-        """
+        f"""
         SELECT
             fk.name AS fk_name,
             s1.name AS parent_schema,
@@ -85,7 +110,7 @@ def fetch_foreign_keys(database_name: str, table_filter: set[str] | None = None)
         JOIN sys.tables AS tr ON fkc.referenced_object_id = tr.object_id
         JOIN sys.schemas AS s2 ON tr.schema_id = s2.schema_id
         JOIN sys.columns AS cr ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
-        WHERE s1.name = 'dbo' AND s2.name = 'dbo'
+        WHERE s1.name IN ({schema_csv}) AND s2.name IN ({schema_csv})
         ORDER BY tp.name, tr.name
         """
     )
@@ -109,10 +134,19 @@ def fetch_foreign_keys(database_name: str, table_filter: set[str] | None = None)
     if not table_filter:
         return all_fks
 
+    normalized_filter = {item.lower() for item in table_filter}
+
     return [
         fk
         for fk in all_fks
-        if fk["parent_table"] in table_filter and fk["referenced_table"] in table_filter
+        if (
+            fk["parent_table"].lower() in normalized_filter
+            or _table_key(fk["parent_schema"], fk["parent_table"]).lower() in normalized_filter
+        )
+        and (
+            fk["referenced_table"].lower() in normalized_filter
+            or _table_key(fk["referenced_schema"], fk["referenced_table"]).lower() in normalized_filter
+        )
     ]
 
 

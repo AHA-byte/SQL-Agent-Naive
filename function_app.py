@@ -3,7 +3,10 @@ import logging
 import traceback
 
 import azure.functions as func
+from botbuilder.schema import Activity
 
+from app.bot.adapter import BOT_ADAPTER
+from app.bot.handlers import SQL_BOT
 from app.config import get_available_databases
 from app.main import process_message_request
 from app.services import (
@@ -71,6 +74,35 @@ def messages(req: func.HttpRequest) -> func.HttpResponse:
             },
             status=400,
         )
+
+
+@app.route(route="bot/messages", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
+async def bot_messages(req: func.HttpRequest) -> func.HttpResponse:
+    body = _parse_body(req)
+    if not body:
+        return _json_response({"error": "Invalid JSON body"}, status=400)
+
+    try:
+        activity = Activity().deserialize(body)
+        auth_header = req.headers.get("Authorization", "")
+        invoke_response = await BOT_ADAPTER.process_activity(activity, auth_header, SQL_BOT.on_turn)
+        if invoke_response:
+            return func.HttpResponse(
+                body=json.dumps(invoke_response.body),
+                status_code=invoke_response.status,
+                mimetype="application/json",
+            )
+        return func.HttpResponse(status_code=202)
+    except PermissionError:
+        logging.warning("Unauthorized bot request: PermissionError raised by adapter")
+        return _json_response({"error": "Unauthorized bot request"}, status=401)
+    except Exception as exc:
+        message = str(exc)
+        if "unauthorized" in message.lower() or "authentication" in message.lower():
+            logging.warning("Unauthorized bot request: %s", message)
+            return _json_response({"error": "Unauthorized bot request"}, status=401)
+        logging.exception("Unexpected error in /bot/messages")
+        return _json_response({"error": f"Bot processing failed: {exc}"}, status=500)
 
 
 @app.route(route="health", methods=["GET"])

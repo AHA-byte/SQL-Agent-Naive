@@ -1,7 +1,13 @@
 def format_schema_for_prompt(schema: dict[str, list[str]]) -> str:
+    def _display_table(table_key: str) -> str:
+        if "." in table_key:
+            schema_name, table_name = table_key.split(".", 1)
+            return f"[{schema_name}].[{table_name}]"
+        return f"[{table_key}]"
+
     lines = []
     for table, columns in schema.items():
-        lines.append(f"{table}: {', '.join(columns)}")
+        lines.append(f"{_display_table(table)}: {', '.join(columns)}")
     return "\n".join(lines)
 
 
@@ -37,8 +43,8 @@ STRICT RULES (MUST FOLLOW):
 9. NEVER guess relationships; use ONLY defined foreign keys
 10. NEVER generate multiple SQL statements
 11. NEVER include explanations, comments, or markdown; return ONLY SQL
-12. If a column name is a reserved keyword (e.g., start, end, order), ALWAYS wrap it in square brackets []
-13. Select ONLY business-relevant columns by default: id, jobId, label, workOrderStatus, sellTotal, createdAt
+12. ALWAYS wrap schema, table, and column identifiers in square brackets [] (for example, [xero].[AR-invoices], [policy number])
+13. Select only business-relevant columns that are explicitly present in the selected table(s)
 14. DO NOT include technical/internal columns unless explicitly needed by the user
 15. CRITICAL JOIN RULE: If user asks about relationships (for example, jobs with allocations/reminders/work orders), you MUST use JOIN clauses.
 16. For relationship requests, use ONLY defined foreign key relationships and DO NOT substitute joins with simple column filtering.

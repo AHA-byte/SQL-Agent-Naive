@@ -32,11 +32,11 @@ def _extract_tables(sql: str) -> list[tuple[str | None, str]]:
     table_refs: list[tuple[str | None, str]] = []
 
     schema_table_pattern = re.compile(
-        r"\b(?:from|join)\s+\[(?P<schema>[A-Za-z0-9_]+)\]\s*\.\s*\[(?P<table>[A-Za-z0-9_]+)\]",
+        r"\b(?:from|join)\s+\[(?P<schema>[A-Za-z0-9_-]+)\]\s*\.\s*\[(?P<table>[A-Za-z0-9_-]+)\]",
         flags=re.IGNORECASE,
     )
     table_only_pattern = re.compile(
-        r"\b(?:from|join)\s+\[(?P<table>[A-Za-z0-9_]+)\]",
+        r"\b(?:from|join)\s+\[(?P<table>[A-Za-z0-9_-]+)\]",
         flags=re.IGNORECASE,
     )
 
@@ -102,7 +102,9 @@ def validate_join_requirements(user_query: str, sql: str) -> None:
         ]
     )
 
-    requires_join = len(mentioned_entities) >= 2 or relationship_hint
+    # Require JOIN only when multiple known entities are requested.
+    # Natural language phrases like "with SOW" should not force JOIN logic.
+    requires_join = len(mentioned_entities) >= 2
     if requires_join and " join " not in f" {normalized_sql} ":
         raise ServiceError(
             "JOIN required for relationship query; use foreign-key-based JOINs instead of simple filtering"
@@ -188,7 +190,7 @@ def validate_read_only_sql(
 
     if allowed_columns_by_table:
         col_refs = re.findall(
-            r"\[(?P<table>[A-Za-z0-9_]+)\]\s*\.\s*\[(?P<column>[A-Za-z0-9_]+)\]",
+            r"\[(?P<table>[A-Za-z0-9_-]+)\]\s*\.\s*\[(?P<column>[A-Za-z0-9_-]+)\]",
             sql,
             flags=re.IGNORECASE,
         )
@@ -215,12 +217,7 @@ def enforce_row_limit(sql: str, max_rows: int = 500) -> str:
 
 
 def sanitize_sql(sql: str) -> str:
-    reserved_columns = ["start", "end"]
-
     sanitized = sql
-    for col in reserved_columns:
-        sanitized = re.sub(rf"(?i)(?<!\[)\b{col}\b(?!\])\s*,", f"[{col}],", sanitized)
-        sanitized = re.sub(rf"(?i)(?<!\[)\b{col}\b(?!\])", f"[{col}]", sanitized)
 
     # Bracket hyphenated table names in FROM/JOIN clauses (e.g., t_work-orders).
     sanitized = re.sub(

@@ -80,17 +80,80 @@ def _build_join(
 def build_relationship_sql(user_query: str, schema: dict[str, list[str]], foreign_keys: list[dict]) -> str | None:
     available_tables = set(schema.keys())
     entities = detect_intent_entities(user_query)
+    query_text = (user_query or "").lower()
 
     if not is_relationship_query(user_query, entities):
         return None
 
     if len(entities) < 2:
-        raise ServiceError("Relationship query detected but not enough entities were identified")
+        return None
 
-    missing_tables = [table for table in entities[:2] if table not in available_tables]
-    if missing_tables:
-        missing_csv = ", ".join(missing_tables)
-        raise ServiceError(f"Relationship query tables missing from schema context: {missing_csv}")
+    # For multi-entity requests, use deterministic templates only for known patterns.
+    if len(entities) > 2:
+        if {"t_jobs", "t_reminders", "t_allocations"}.issubset(set(entities)) and (
+            "without allocation" in query_text
+            or "no allocation" in query_text
+            or "without allocations" in query_text
+        ):
+            if not {"t_jobs", "t_reminders", "t_allocations"}.issubset(available_tables):
+                return None
+            return (
+                "SELECT TOP 20\n"
+                "    j.[id],\n"
+                "    j.[jobNumber],\n"
+                "    j.[createdAt],\n"
+                "    r.[id] AS [reminderId]\n"
+                "FROM [t_jobs] j\n"
+                "JOIN [t_reminders] r ON j.[id] = r.[jobId]\n"
+                "LEFT JOIN [t_allocations] a ON j.[id] = a.[jobId]\n"
+                "WHERE a.[id] IS NULL\n"
+                "ORDER BY j.[createdAt] DESC"
+            )
+
+        if {"t_jobs", "t_reminders", "t_work-orders"}.issubset(set(entities)) and (
+            "no completed work order" in query_text
+            or "no completed work orders" in query_text
+            or "without completed work order" in query_text
+            or "without completed work orders" in query_text
+        ):
+            if not {"t_jobs", "t_reminders", "t_work-orders"}.issubset(available_tables):
+                return None
+            return (
+                "SELECT TOP 20\n"
+                "    j.[id],\n"
+                "    j.[jobNumber],\n"
+                "    j.[createdAt],\n"
+                "    r.[id] AS [reminderId]\n"
+                "FROM [t_jobs] j\n"
+                "JOIN [t_reminders] r ON j.[id] = r.[jobId]\n"
+                "LEFT JOIN [t_work-orders] w ON j.[id] = w.[jobId] AND LOWER(w.[workOrderStatus]) = 'completed'\n"
+                "WHERE w.[id] IS NULL\n"
+                "ORDER BY j.[createdAt] DESC"
+            )
+
+        return None
+
+    # Negative relationship intents are better handled by templates or LLM fallback than fixed inner joins.
+    if any(token in query_text for token in [" without ", " no ", " missing ", " not "]):
+        if set(entities) == {"t_jobs", "t_allocations"} and (
+            "without allocation" in query_text
+            or "without allocations" in query_text
+            or "no allocations" in query_text
+        ):
+            return (
+                "SELECT TOP 20\n"
+                "    j.[id],\n"
+                "    j.[jobNumber],\n"
+                "    j.[createdAt]\n"
+                "FROM [t_jobs] j\n"
+                "LEFT JOIN [t_allocations] a ON j.[id] = a.[jobId]\n"
+                "WHERE a.[id] IS NULL\n"
+                "ORDER BY j.[createdAt] DESC"
+            )
+        return None
+
+    if missing_tables := [table for table in entities[:2] if table not in available_tables]:
+        return None
 
     left_table, right_table = entities[0], entities[1]
     aliases = {
@@ -103,7 +166,10 @@ def build_relationship_sql(user_query: str, schema: dict[str, list[str]], foreig
     right_alias = aliases.get(right_table, "b")
 
     fk_relations = build_fk_relations(foreign_keys)
-    join_clause = _build_join(left_table, right_table, left_alias, right_alias, fk_relations)
+    try:
+        join_clause = _build_join(left_table, right_table, left_alias, right_alias, fk_relations)
+    except ServiceError:
+        return None
 
     select_columns = [f"{left_alias}.[id]"]
     if left_table == "t_jobs" and "jobNumber" in schema[left_table]:

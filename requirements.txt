@@ -1,6 +1,9 @@
 azure-functions
 azure-identity
 azure-keyvault-secrets
+aiohttp
+botbuilder-core
+botbuilder-schema
 openai
 pandas
 pyodbc

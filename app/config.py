@@ -118,13 +118,13 @@ def get_default_database_name(dbs: dict[str, DatabaseConfig] | None = None) -> s
 
 
 def get_allowed_schemas() -> set[str]:
-    raw = os.getenv("ALLOWED_SQL_SCHEMAS", "dbo")
+    raw = os.getenv("ALLOWED_SQL_SCHEMAS", "dbo,admin,model,reporting,xero")
     return {token.strip().lower() for token in raw.split(",") if token.strip()}
 
 
 def get_schema_table_limit() -> int:
     try:
-        value = int(os.getenv("SCHEMA_TABLE_LIMIT", "12"))
-        return max(1, min(value, 50))
+        value = int(os.getenv("SCHEMA_TABLE_LIMIT", "30"))
+        return max(1, min(value, 120))
     except ValueError:
-        return 12
+        return 30
