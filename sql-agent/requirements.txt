@@ -1,0 +1,12 @@
+azure-functions
+azure-identity
+azure-keyvault-secrets
+aiohttp
+botbuilder-core
+botbuilder-schema
+botbuilder-integration-aiohttp
+openai
+pandas
+pyodbc
+python-dotenv
+SQLAlchemy

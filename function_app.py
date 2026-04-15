@@ -43,15 +43,18 @@ def _parse_body(req: func.HttpRequest) -> dict:
 def messages(req: func.HttpRequest) -> func.HttpResponse:
     body = _parse_body(req)
     user_query = (body.get("message") or body.get("text") or body.get("query") or "").strip()
+    debug_flag = str(body.get("debug") or req.params.get("debug") or "").lower() in {"1", "true", "yes"}
 
     try:
         result, _ = process_message_request(body)
 
         payload = {
             "query": user_query,
-            "sql": result.get("sql", ""),
             "rows": result.get("rows", []),
         }
+        if debug_flag:
+            payload["sql"] = result.get("sql", "")
+            payload["meta"] = result.get("meta", {})
         if result.get("jobs") is not None:
             payload["jobs"] = result.get("jobs")
 

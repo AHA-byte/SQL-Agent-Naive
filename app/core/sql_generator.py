@@ -1,6 +1,6 @@
-from openai import OpenAI
+from openai import AzureOpenAI, OpenAI
 
-from app.config import get_openai_settings
+from app.config import get_azure_openai_endpoint, get_openai_settings
 from app.core.errors import ServiceError
 from app.core.prompt_builder import build_prompt
 
@@ -30,15 +30,29 @@ def generate_sql(
         database_name=database_name,
     )
 
-    client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0,
-    )
+    azure_endpoint = get_azure_openai_endpoint()
+    if azure_endpoint:
+        client = AzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=azure_endpoint,
+            api_version="2024-02-01",
+        )
+    else:
+        client = OpenAI(api_key=api_key)
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0,
+        )
+    except Exception as exc:
+        error_text = str(exc).lower()
+        if "invalid_api_key" in error_text or "incorrect api key" in error_text or "error code: 401" in error_text:
+            raise ServiceError("SQL generation provider authentication failed") from exc
+        raise ServiceError("SQL generation provider request failed") from exc
 
     sql = (response.choices[0].message.content or "").replace("```sql", "").replace("```", "").strip()
     if not sql:

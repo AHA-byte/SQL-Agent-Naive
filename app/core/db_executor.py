@@ -9,11 +9,34 @@ from app.core.sql_validator import enforce_row_limit, validate_read_only_sql
 
 
 def get_engine(db_config: DatabaseConfig):
-    password = quote_plus(db_config.password)
-    url = (
-        f"mssql+pyodbc://{db_config.user}:{password}@{db_config.host}:{db_config.port}/{db_config.db}"
-        "?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no"
-    )
+    if db_config.user:
+        uid = db_config.user
+        if "@" not in uid and "." in db_config.host:
+            server_prefix = db_config.host.split(".", 1)[0]
+            uid = f"{uid}@{server_prefix}"
+        conn_str = (
+            "Driver={ODBC Driver 18 for SQL Server};"
+            f"Server=tcp:{db_config.host},{db_config.port};"
+            f"Database={db_config.db};"
+            f"UID={uid};"
+            f"PWD={db_config.password or ''};"
+            "Encrypt=yes;"
+            "TrustServerCertificate=no;"
+        )
+        url = f"mssql+pyodbc:///?odbc_connect={quote_plus(conn_str)}"
+    else:
+        auth_mode = (db_config.auth_mode or "ActiveDirectoryMsi").strip()
+        uid_segment = f"UID={db_config.msi_client_id};" if db_config.msi_client_id else ""
+        conn_str = (
+            "Driver={ODBC Driver 18 for SQL Server};"
+            f"Server=tcp:{db_config.host},{db_config.port};"
+            f"Database={db_config.db};"
+            f"Authentication={auth_mode};"
+            f"{uid_segment}"
+            "Encrypt=yes;"
+            "TrustServerCertificate=no;"
+        )
+        url = f"mssql+pyodbc:///?odbc_connect={quote_plus(conn_str)}"
     return create_engine(url, pool_pre_ping=True)
 
 
@@ -28,13 +51,15 @@ def execute_read_only_query(
     allowed_columns_by_table: dict[str, set[str]] | None,
     allowed_schemas: set[str] | None,
     max_rows: int = 500,
+    validated: bool = False,
 ) -> pd.DataFrame:
-    validate_read_only_sql(
-        sql,
-        allowed_tables=allowed_tables,
-        allowed_columns_by_table=allowed_columns_by_table,
-        allowed_schemas=allowed_schemas,
-    )
+    if not validated:
+        validate_read_only_sql(
+            sql,
+            allowed_tables=allowed_tables,
+            allowed_columns_by_table=allowed_columns_by_table,
+            allowed_schemas=allowed_schemas,
+        )
     wrapped_sql = enforce_row_limit(sql, max_rows=max_rows)
 
     engine = get_engine(db_config)

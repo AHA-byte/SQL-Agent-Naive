@@ -1,0 +1,44 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "ace93394-a07b-448a-874a-deb391875e03",
+  "developer": {
+    "name": "Watermark Construction",
+    "websiteUrl": "https://wmsqlbot.azurewebsites.net",
+    "privacyUrl": "https://wmsqlbot.azurewebsites.net",
+    "termsOfUseUrl": "https://wmsqlbot.azurewebsites.net"
+  },
+  "name": {
+    "short": "WM SQL Agent",
+    "full": "Watermark Construction SQL Agent"
+  },
+  "description": {
+    "short": "Ask questions about jobs, claims, and financials in natural language.",
+    "full": "Watermark Construction SQL Agent converts natural language questions into SQL queries across PRIME, ENDATA, and IN4MO databases. Ask about jobs, allocations, claims, invoices, work orders, and more."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#4F6BED",
+  "bots": [
+    {
+      "botId": "ace93394-a07b-448a-874a-deb391875e03",
+      "scopes": [
+        "personal",
+        "team",
+        "groupChat"
+      ],
+      "supportsFiles": false,
+      "isNotificationOnly": false
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": [
+    "wmsqlbot.azurewebsites.net"
+  ]
+}

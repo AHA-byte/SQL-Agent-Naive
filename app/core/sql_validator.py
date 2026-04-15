@@ -1,5 +1,6 @@
 import re
 
+from app.core.business_safety import is_system_or_internal_identifier
 from app.core.errors import ServiceError
 
 BLOCKED_SQL_KEYWORDS = {
@@ -28,6 +29,23 @@ def _normalize_sql(sql: str) -> str:
     return re.sub(r"\s+", " ", sql.strip()).lower()
 
 
+def _normalize_identifier(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (value or "").lower())
+
+
+def _table_matches_concept(table_name: str, concept: str) -> bool:
+    normalized = _normalize_identifier(table_name)
+    if concept == "jobs":
+        return "job" in normalized
+    if concept == "allocations":
+        return "alloc" in normalized
+    if concept == "reminders":
+        return "remind" in normalized
+    if concept == "work_orders":
+        return "workorder" in normalized
+    return False
+
+
 def _extract_tables(sql: str) -> list[tuple[str | None, str]]:
     table_refs: list[tuple[str | None, str]] = []
 
@@ -51,6 +69,33 @@ def _extract_tables(sql: str) -> list[tuple[str | None, str]]:
             table_refs.append((None, table.lower()))
 
     return table_refs
+
+
+def _extract_table_aliases(sql: str) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+
+    schema_table_alias_pattern = re.compile(
+        r"\b(?:from|join)\s+\[(?P<schema>[A-Za-z0-9_-]+)\]\s*\.\s*\[(?P<table>[A-Za-z0-9_-]+)\]\s+(?:as\s+)?(?:\[(?P<alias_b>[A-Za-z0-9_-]+)\]|(?P<alias_u>[A-Za-z_][A-Za-z0-9_]*))",
+        flags=re.IGNORECASE,
+    )
+    table_alias_pattern = re.compile(
+        r"\b(?:from|join)\s+\[(?P<table>[A-Za-z0-9_-]+)\]\s+(?:as\s+)?(?:\[(?P<alias_b>[A-Za-z0-9_-]+)\]|(?P<alias_u>[A-Za-z_][A-Za-z0-9_]*))",
+        flags=re.IGNORECASE,
+    )
+
+    for match in schema_table_alias_pattern.finditer(sql):
+        table = match.group("table").lower()
+        alias = (match.group("alias_b") or match.group("alias_u") or "").lower()
+        if alias:
+            aliases[alias] = table
+
+    for match in table_alias_pattern.finditer(sql):
+        table = match.group("table").lower()
+        alias = (match.group("alias_b") or match.group("alias_u") or "").lower()
+        if alias and alias not in aliases:
+            aliases[alias] = table
+
+    return aliases
 
 
 def validate_sql(query: str):
@@ -77,8 +122,15 @@ def validate_join_requirements(user_query: str, sql: str) -> None:
     if not query_text:
         return
 
+    # Status-history requests often join through objectId/objectType rather than jobId token patterns.
+    if "status history" in query_text and "allocation" in query_text:
+        return
+
+    # Only detect entities as primary subjects, not incidental column mentions.
+    # "job numbers" or "job number" is a column reference, not a jobs-entity query.
+    # We look for the entity as a standalone concept, not as part of a column name.
     entity_keywords = {
-        "jobs": ["job", "jobs"],
+        "jobs": ["jobs", "job status", "job detail", "job list"],
         "allocations": ["allocation", "allocations"],
         "reminders": ["reminder", "reminders"],
         "work_orders": ["work order", "work orders", "work-order", "work-orders"],
@@ -90,59 +142,16 @@ def validate_join_requirements(user_query: str, sql: str) -> None:
         if any(term in query_text for term in terms)
     }
 
-    relationship_hint = any(
-        token in query_text
-        for token in [
-            " with ",
-            " related ",
-            " relationship",
-            "relationships",
-            "joined",
-            "join",
-        ]
-    )
+    # If the SQL already has a JOIN, trust the LLM's join structure.
+    if " join " in f" {normalized_sql} ":
+        return
 
-    # Require JOIN only when multiple known entities are requested.
-    # Natural language phrases like "with SOW" should not force JOIN logic.
+    # Require JOIN only when multiple known entities are explicitly requested.
     requires_join = len(mentioned_entities) >= 2
-    if requires_join and " join " not in f" {normalized_sql} ":
+    if requires_join:
         raise ServiceError(
             "JOIN required for relationship query; use foreign-key-based JOINs instead of simple filtering"
         )
-
-    table_refs = _extract_tables(sql)
-    table_names = {table for _, table in table_refs}
-
-    expected_relationships = [
-        (
-            {"jobs", "allocations"},
-            {"t_jobs", "t_allocations"},
-            ("jobid", "id"),
-        ),
-        (
-            {"jobs", "reminders"},
-            {"t_jobs", "t_reminders"},
-            ("jobid", "id"),
-        ),
-        (
-            {"jobs", "work_orders"},
-            {"t_jobs", "t_work-orders"},
-            ("jobid", "id"),
-        ),
-    ]
-
-    for intent_entities, required_tables, fk_cues in expected_relationships:
-        if intent_entities.issubset(mentioned_entities):
-            if not required_tables.issubset(table_names):
-                required_csv = ", ".join(sorted(required_tables))
-                raise ServiceError(
-                    f"Relationship query must join expected tables: {required_csv}"
-                )
-            for cue in fk_cues:
-                if cue not in normalized_sql:
-                    raise ServiceError(
-                        "Relationship query must use foreign-key join columns (for example, jobId and id)"
-                    )
 
 
 def validate_read_only_sql(
@@ -183,12 +192,16 @@ def validate_read_only_sql(
 
     table_refs = _extract_tables(sql)
     for schema, table in table_refs:
+        table_identifier = f"{schema}.{table}" if schema else table
+        if is_system_or_internal_identifier(table_identifier):
+            raise ServiceError(f"Table '{table_identifier}' is blocked as system/internal metadata")
         if schema and schema.lower() not in allowed_schemas:
             raise ServiceError(f"Schema '{schema}' is not allowed")
         if allowed_tables is not None and table.lower() not in allowed_tables:
             raise ServiceError(f"Table '{table}' is not in the allowed schema subset")
 
     if allowed_columns_by_table:
+        alias_to_table = _extract_table_aliases(sql)
         col_refs = re.findall(
             r"\[(?P<table>[A-Za-z0-9_-]+)\]\s*\.\s*\[(?P<column>[A-Za-z0-9_-]+)\]",
             sql,
@@ -198,8 +211,12 @@ def validate_read_only_sql(
             table_key = table.lower()
             column_key = column.lower()
 
-            # Skip schema-qualified table references like [dbo].[orders]
-            if allowed_schemas and table_key in allowed_schemas and allowed_tables and column_key in allowed_tables:
+            # Resolve alias-qualified references such as [j].[id] to their source table.
+            if table_key not in allowed_columns_by_table and table_key in alias_to_table:
+                table_key = alias_to_table[table_key]
+
+            # Skip schema-qualified table references like [dbo].[t_jobs] where table_key is the schema name.
+            if allowed_schemas and table_key in allowed_schemas:
                 continue
 
             if table_key not in allowed_columns_by_table:
@@ -213,11 +230,49 @@ def enforce_row_limit(sql: str, max_rows: int = 500) -> str:
         raise ServiceError("max_rows must be between 1 and 5000")
 
     safe_sql = sql.strip().rstrip(";")
-    return f"SELECT TOP {max_rows} * FROM ({safe_sql}) AS q"
+
+    # Insert or clamp TOP on the outer SELECT instead of wrapping as SELECT * FROM (...).
+    upper_sql = safe_sql.upper()
+    select_idx = upper_sql.find("SELECT")
+    if select_idx < 0:
+        return f"SELECT TOP {max_rows} * FROM ({safe_sql}) AS _row_limit_q"
+
+    after_select = safe_sql[select_idx + len("SELECT"):]
+    top_match = re.match(r"\s+TOP\s+(\d+)", after_select, re.IGNORECASE)
+    if top_match:
+        existing_top = int(top_match.group(1))
+        effective_top = min(existing_top, max_rows)
+        replaced = re.sub(
+            r"(\s+TOP\s+)\d+",
+            lambda m: f"{m.group(1)}{effective_top}",
+            after_select,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        return safe_sql[:select_idx + len("SELECT")] + replaced
+
+    leading_ws = re.match(r"(\s+)", after_select)
+    separator = leading_ws.group(1) if leading_ws else " "
+    rest = after_select.lstrip()
+    return safe_sql[:select_idx + len("SELECT")] + separator + f"TOP {max_rows} " + rest
 
 
 def sanitize_sql(sql: str) -> str:
     sanitized = sql
+
+    # Normalize 3-part identifiers [database].[schema].[table] to [schema].[table].
+    sanitized = re.sub(
+        r"\[(?P<db>[A-Za-z0-9_-]+)\]\s*\.\s*\[(?P<schema>[A-Za-z0-9_-]+)\]\s*\.\s*\[(?P<table>[A-Za-z0-9_-]+)\]",
+        lambda m: f"[{m.group('schema')}].[{m.group('table')}]",
+        sanitized,
+        flags=re.IGNORECASE,
+    )
+
+    sanitized = re.sub(
+        r"(?i)\b(from|join)\s+([A-Za-z0-9_]+)\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)",
+        lambda m: f"{m.group(1)} [{m.group(3)}].[{m.group(4)}]",
+        sanitized,
+    )
 
     # Bracket hyphenated table names in FROM/JOIN clauses (e.g., t_work-orders).
     sanitized = re.sub(

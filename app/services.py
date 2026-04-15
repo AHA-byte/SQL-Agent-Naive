@@ -37,6 +37,7 @@ def execute_query(database_name: str, sql: str, max_rows: int = 1000) -> pd.Data
         allowed_columns_by_table=allowed_columns_by_table,
         allowed_schemas=allowed_schemas,
         max_rows=max_rows,
+        validated=False,
     )
 
 
