@@ -1,4 +1,11 @@
-from app.core.business_knowledge import BUSINESS_RULES, annotate_schema_with_descriptions
+try:
+  from app.core.business_knowledge import BUSINESS_RULES, annotate_schema_with_descriptions
+except Exception:
+  # Fallback when business-specific knowledge is intentionally excluded from source control.
+  BUSINESS_RULES = ""
+
+  def annotate_schema_with_descriptions(schema: dict[str, list[str]]) -> dict[str, list[str]]:
+    return schema
 
 
 def format_schema_for_prompt(schema: dict[str, list[str]]) -> str:
